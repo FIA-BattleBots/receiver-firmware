@@ -26,12 +26,13 @@
 // Define more buttons here if needed...
 
 // Controller Limits
-#define TRIGGER_MIN 0
-#define TRIGGER_MAX 1023
-#define STICK_MIN 0
-#define STICK_MID 32767
-#define STICK_MAX 65534
-#define STICK_DEADZONE 4096
+#define TRIGGER_MIN 0     // DON'T CHANGE
+#define TRIGGER_MAX 1023  // DON'T CHANGE
+#define STICK_MIN 0       // DON'T CHANGE
+#define STICK_MID 32767   // DON'T CHANGE
+#define STICK_MAX 65534   // DON'T CHANGE
+#define STICK_DEADZONE 4096 
+#define STICK_BIAS 0  // Offset the default stick position
 
 // Weapon, throttle and steering limits
 #define WPN_MIN -100.0  // Full speed in reverse
@@ -40,17 +41,19 @@
 #define WPN_MID 50.0    // Mid speed for max damage
 #define WPN_HIGH 75.0   // High speed for charging
 #define WPN_MAX 100.0   // Full speed for weapon-on-weapon hits
-#define THROTTLE_MIN -100.0
-#define THROTTLE_OFF 0.0
-#define THROTTLE_MAX 100.0
-#define STEER_MIN -100.0
-#define STEER_OFF 0.0
-#define STEER_MAX 100.0
+#define THROTTLE_MIN -100.0 // DON'T CHANGE
+#define THROTTLE_OFF 0.0    // DON'T CHANGE
+#define THROTTLE_MAX 100.0  // DON'T CHANGE
+#define STEER_MIN -100.0    // DON'T CHANGE
+#define STEER_OFF 0.0       // DON'T CHANGE
+#define STEER_MAX 100.0     // DON'T CHANGE
+#define INVERT_LEFT_WHEEL  1  // For inverting left wheel direction
+#define INVERT_RIGHT_WHEEL 0  // For inverting right wheel direction
 
 // PWM Settings
-#define PWM_MIN 1000
-#define PWM_MID 1500
-#define PWM_MAX 2000
+#define PWM_MIN 1000  // DON'T CHANGE
+#define PWM_MID 1500  // DON'T CHANGE
+#define PWM_MAX 2000  // DON'T CHANGE
 
 // Robot states
 #define COMBAT_MODE 0
@@ -140,7 +143,9 @@ void processGamepad() {
 
     // Set steering
     if (abs(ctl.axisX-STICK_MID) > STICK_DEADZONE) {
-        steer = map(ctl.axisX, STICK_MIN, STICK_MAX, STEER_MIN, STEER_MAX);
+        int stick_pos = constrain(ctl.axisX + STICK_BIAS, STICK_MIN, STICK_MAX);
+        steer = map(stick_pos, STICK_MIN, STICK_MAX, STEER_MIN, STEER_MAX);
+        
     } else {
         steer = STEER_OFF;
     }
@@ -209,7 +214,7 @@ void assistedMixing() {
       float error = angleDifference(tgtRotZ, rotZ);
       errorIntegral += error;
       float offset = K_P*error + K_I*errorIntegral + K_D*(error-prevError);  // TODO: Expand to PID?
-      
+
       offset = constrain(offset, -CONTROL_AUTHORITY, CONTROL_AUTHORITY);
       mix_L = throttle - offset;
       mix_R = throttle + offset;
@@ -217,7 +222,7 @@ void assistedMixing() {
     } else {
       // Gå bara på kontroller-input
       elevonMixing();
-    }    
+    }
 }
 
 void elevonMixing() {
@@ -227,8 +232,22 @@ void elevonMixing() {
 }
 
 void applyPWM() {
-    int leftPWM = map(mix_L, THROTTLE_MIN, THROTTLE_MAX, PWM_MIN, PWM_MAX);
-    int rightPWM = map(mix_R, THROTTLE_MIN, THROTTLE_MAX, PWM_MIN, PWM_MAX);
+    int leftPWM;
+    int rightPWM;
+
+    if (INVERT_LEFT_WHEEL) {
+      leftPWM = map(mix_L, THROTTLE_MIN, THROTTLE_MAX, PWM_MAX, PWM_MIN);
+    } else {
+      leftPWM = map(mix_L, THROTTLE_MIN, THROTTLE_MAX, PWM_MIN, PWM_MAX);
+    }
+
+    if (INVERT_RIGHT_WHEEL) {
+      rightPWM = map(mix_R, THROTTLE_MIN, THROTTLE_MAX, PWM_MAX, PWM_MIN);
+    } else {
+      rightPWM = map(mix_R, THROTTLE_MIN, THROTTLE_MAX, PWM_MIN, PWM_MAX);
+    }
+
+
     int weaponPWM = map(weaponSpeed, WPN_MIN, WPN_MAX, PWM_MIN, PWM_MAX);
 
     // Constrain PWM values
