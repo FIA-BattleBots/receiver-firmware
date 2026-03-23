@@ -26,12 +26,13 @@
 // Define more buttons here if needed...
 
 // Controller Limits
-#define TRIGGER_MIN 0
-#define TRIGGER_MAX 1023
-#define STICK_MIN 0
-#define STICK_MID 32767
-#define STICK_MAX 65534
-#define STICK_DEADZONE 4096
+#define TRIGGER_MIN 0     // DON'T CHANGE
+#define TRIGGER_MAX 1023  // DON'T CHANGE
+#define STICK_MIN 0       // DON'T CHANGE
+#define STICK_MID 32767   // DON'T CHANGE
+#define STICK_MAX 65534   // DON'T CHANGE
+#define STICK_DEADZONE 4096 
+#define STICK_BIAS 0  // Offset the default stick position
 
 // Weapon, throttle and steering limits
 #define WPN_MIN -100.0  // Full speed in reverse
@@ -40,17 +41,19 @@
 #define WPN_MID 50.0    // Mid speed for max damage
 #define WPN_HIGH 75.0   // High speed for charging
 #define WPN_MAX 100.0   // Full speed for weapon-on-weapon hits
-#define THROTTLE_MIN -100.0
-#define THROTTLE_OFF 0.0
-#define THROTTLE_MAX 100.0
-#define STEER_MIN -100.0
-#define STEER_OFF 0.0
-#define STEER_MAX 100.0
+#define THROTTLE_MIN -100.0 // DON'T CHANGE
+#define THROTTLE_OFF 0.0    // DON'T CHANGE
+#define THROTTLE_MAX 100.0  // DON'T CHANGE
+#define STEER_MIN -100.0    // DON'T CHANGE
+#define STEER_OFF 0.0       // DON'T CHANGE
+#define STEER_MAX 100.0     // DON'T CHANGE
+#define INVERT_LEFT_WHEEL  1  // For inverting left wheel direction
+#define INVERT_RIGHT_WHEEL 0  // For inverting right wheel direction
 
 // PWM Settings
-#define PWM_MIN 1000
-#define PWM_MID 1500
-#define PWM_MAX 2000
+#define PWM_MIN 1000  // DON'T CHANGE
+#define PWM_MID 1500  // DON'T CHANGE
+#define PWM_MAX 2000  // DON'T CHANGE
 
 // Robot states
 #define COMBAT_MODE 0
@@ -62,6 +65,11 @@
 #define DRIVE_SPEED_MODIFIER 1.0    // [0, 1]
 #define TURN_SPEED_MODIFIER 0.5     // [0, 1]
 #define UPDATE_DELAY 10             // Unit: ms
+#define K_P 2.0
+#define K_I 0.0
+#define K_D 5.0
+#define ROT_LOCK_THRESHOLD 0.1      // Unit: rad/s
+#define CONTROL_AUTHORITY 100.0     // How much the offset can affect the turning
 
 // Global variables :)
 int weaponSpeed = WPN_OFF;
@@ -77,12 +85,25 @@ float gyroX = 0.0;    // Unit: rad/s
 float gyroY = 0.0;    // Unit: rad/s
 float gyroZ = 0.0;    // Unit: rad/s, this is the one we are interested in for turning the robot
 
+float rotX = 0.0;    // Unit: Degrees
+float rotY = 0.0;    // Unit: Degrees
+float rotZ = 0.0;    // Unit: Degrees, this is the one we are interested in for turning the robot
+
+bool rotLocked = false;
+float tgtRotZ = 0.0;
+float mix_L; // Mixed steering for left drive to be converted to PWM
+float mix_R;
+float prevError = 0.0;
+float errorIntegral = 0.0;
+
 Servo lDriveESC;
 Servo rDriveESC;
 Servo wpnESC;
 
 CodeCell myCodeCell;
 XboxSeriesXControllerESP32_asukiaaa::Core ctl;
+
+
 
 void dumpGamepad() {
     Serial.println("Address: " + ctl.buildDeviceAddressStr());
@@ -122,7 +143,9 @@ void processGamepad() {
 
     // Set steering
     if (abs(ctl.axisX-STICK_MID) > STICK_DEADZONE) {
-        steer = map(ctl.axisX, STICK_MIN, STICK_MAX, STEER_MIN, STEER_MAX);
+        int stick_pos = constrain(ctl.axisX + STICK_BIAS, STICK_MIN, STICK_MAX);
+        steer = map(stick_pos, STICK_MIN, STICK_MAX, STEER_MIN, STEER_MAX);
+        
     } else {
         steer = STEER_OFF;
     }
@@ -160,21 +183,74 @@ void processGamepad() {
 }
 
 void readSensors() {
-    myCodeCell.PrintSensors();
+    myCodeCell.Motion_Read();
     myCodeCell.Motion_GyroRead(gyroX, gyroY, gyroZ);
-    Serial.println("(SENSING) gyroX: " + String(gyroX) + ", gyroY: " + String(gyroY) + ", gyroZ: " + String(gyroZ));
+    myCodeCell.Motion_RotationRead(rotX, rotY, rotZ);
+    Serial.print("(SENSING) ");
+    myCodeCell.PrintSensors();
+}
+
+float angleDifference(float angle1, float angle2) {
+    float diff = fmod(angle2 - angle1 + 180, 360) - 180;
+    return (diff < -180) ? diff + 360 : diff; // Ensure the range is [-180, 180]
+}
+
+void assistedMixing() {
+    // Map throttle and steering to PWM values
+    readSensors();
+
+    // Locking logic
+    if (abs(steer) > 0) {
+        rotLocked = false;
+    } else if (abs(gyroZ) < ROT_LOCK_THRESHOLD) {
+        rotLocked = true;
+        tgtRotZ = rotZ;
+        errorIntegral = 0.0;
+    }
+
+    // Control logic
+    if (rotLocked) {
+      // Reglera
+      float error = angleDifference(tgtRotZ, rotZ);
+      errorIntegral += error;
+      float offset = K_P*error + K_I*errorIntegral + K_D*(error-prevError);  // TODO: Expand to PID?
+
+      offset = constrain(offset, -CONTROL_AUTHORITY, CONTROL_AUTHORITY);
+      mix_L = throttle - offset;
+      mix_R = throttle + offset;
+      prevError = error;
+    } else {
+      // Gå bara på kontroller-input
+      elevonMixing();
+    }
+}
+
+void elevonMixing() {
+    // Map throttle and steering to PWM values
+    mix_L = DRIVE_SPEED_MODIFIER*throttle - TURN_SPEED_MODIFIER*(steer-STEER_OFF);
+    mix_R = DRIVE_SPEED_MODIFIER*throttle + TURN_SPEED_MODIFIER*(steer-STEER_OFF);
 }
 
 void applyPWM() {
-    // Map throttle and steering to PWM values
-    float mix_L = DRIVE_SPEED_MODIFIER*throttle - TURN_SPEED_MODIFIER*(steer-STEER_OFF);
-    float mix_R = DRIVE_SPEED_MODIFIER*throttle + TURN_SPEED_MODIFIER*(steer-STEER_OFF);
+    int leftPWM;
+    int rightPWM;
 
-    int leftPWM = map(mix_L, THROTTLE_MIN, THROTTLE_MAX, PWM_MIN, PWM_MAX);
-    int rightPWM = map(mix_R, THROTTLE_MIN, THROTTLE_MAX, PWM_MIN, PWM_MAX);
+    if (INVERT_LEFT_WHEEL) {
+      leftPWM = map(mix_L, THROTTLE_MIN, THROTTLE_MAX, PWM_MAX, PWM_MIN);
+    } else {
+      leftPWM = map(mix_L, THROTTLE_MIN, THROTTLE_MAX, PWM_MIN, PWM_MAX);
+    }
+
+    if (INVERT_RIGHT_WHEEL) {
+      rightPWM = map(mix_R, THROTTLE_MIN, THROTTLE_MAX, PWM_MAX, PWM_MIN);
+    } else {
+      rightPWM = map(mix_R, THROTTLE_MIN, THROTTLE_MAX, PWM_MIN, PWM_MAX);
+    }
+
+
     int weaponPWM = map(weaponSpeed, WPN_MIN, WPN_MAX, PWM_MIN, PWM_MAX);
 
-    // Contrain PWM values
+    // Constrain PWM values
     leftPWM = constrain(leftPWM, PWM_MIN, PWM_MAX);
     rightPWM = constrain(rightPWM, PWM_MIN, PWM_MAX);
     weaponPWM = constrain(weaponPWM, PWM_MIN, PWM_MAX);
@@ -223,6 +299,7 @@ void setMode(int newMode) {
     } else if (mode == PAIRING_MODE) {
         Serial.println("Entered pairing mode");
         myCodeCell.LED(255, 0, 0);      // Red
+        weaponIdleSpeed = WPN_OFF; // Change weapon state to off upon restart.
 
         // Stop all motors
         lDriveESC.writeMicroseconds(PWM_MID);
@@ -243,7 +320,7 @@ void setup() {
     Serial.println("Starting NimBLE Client");
     ctl.begin();
 
-    myCodeCell.Init(MOTION_GYRO);
+    myCodeCell.Init(MOTION_GYRO + MOTION_ROTATION);
     myCodeCell.LED(255, 255, 255);
 
     setMode(PAIRING_MODE);
@@ -264,11 +341,10 @@ void loop() {
             processGamepad();
 
             if (mode == COMBAT_MODE) {
-                // TODO: Break up into elevonMixing() and applyPWM()
+                elevonMixing();
                 applyPWM();
             } else if (mode == ASSISTED_COMBAT_MODE) {
-                // readSensors();
-                // TODO: Break up into elevonMixing() and applyPWM()
+                assistedMixing();
                 applyPWM();
             }
         }
@@ -281,7 +357,6 @@ void loop() {
             ESP.restart();
         }
     }
-
     delay(UPDATE_DELAY);
 }
 
