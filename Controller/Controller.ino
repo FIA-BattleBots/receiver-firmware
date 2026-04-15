@@ -5,7 +5,8 @@
 // Define pins
 #define L_DRIVE_PIN 5
 #define R_DRIVE_PIN 6
-#define WPN_PIN 7
+#define R_WPN_PIN 7
+#define L_WPN_PIN 9
 
 // Shorthand for the Xbox controller
 #define A xboxNotif.btnA
@@ -49,6 +50,8 @@
 #define STEER_MAX 100.0     // DON'T CHANGE
 #define INVERT_LEFT_WHEEL  1  // For inverting left wheel direction
 #define INVERT_RIGHT_WHEEL 0  // For inverting right wheel direction
+#define INVERT_LEFT_WPN    1  // For inverting left weapon direction
+#define INVERT_RIGHT_WPN   0  // For inverting right weapon direction
 
 // PWM Settings
 #define PWM_MIN 1000  // DON'T CHANGE
@@ -98,7 +101,8 @@ float errorIntegral = 0.0;
 
 Servo lDriveESC;
 Servo rDriveESC;
-Servo wpnESC;
+Servo lWpnESC;
+Servo rWpnESC;
 
 CodeCell myCodeCell;
 XboxSeriesXControllerESP32_asukiaaa::Core ctl;
@@ -234,6 +238,8 @@ void elevonMixing() {
 void applyPWM() {
     int leftPWM;
     int rightPWM;
+    int leftWeaponPWM;
+    int rightWeaponPWM;
 
     if (INVERT_LEFT_WHEEL) {
       leftPWM = map(mix_L, THROTTLE_MIN, THROTTLE_MAX, PWM_MAX, PWM_MIN);
@@ -248,38 +254,59 @@ void applyPWM() {
     }
 
 
-    int weaponPWM = map(weaponSpeed, WPN_MIN, WPN_MAX, PWM_MIN, PWM_MAX);
+    // left + right wpn inverting
+    if (INVERT_LEFT_WPN){
+      int leftWeaponPWM = map(weaponSpeed, WPN_MIN, WPN_MAX, PWM_MIN, PWM_MAX);
+    } else {
+      int leftWeaponPWM = map(weaponSpeed, WPN_MIN, WPN_MAX, PWM_MAX, PWM_MIN);
+    }
+
+    if (INVERT_RIGHT_WPN){
+      int rightWeaponPWM = map(weaponSpeed, WPN_MIN, WPN_MAX, PWM_MIN, PWM_MAX);
+    } else {
+      int rightWeaponPWM = map(weaponSpeed, WPN_MIN, WPN_MAX, PWM_MAX, PWM_MIN);
+    }
 
     // Constrain PWM values
     leftPWM = constrain(leftPWM, PWM_MIN, PWM_MAX);
     rightPWM = constrain(rightPWM, PWM_MIN, PWM_MAX);
-    weaponPWM = constrain(weaponPWM, PWM_MIN, PWM_MAX);
+    leftWeaponPWM = constrain(leftWeaponPWM, PWM_MIN, PWM_MAX);
+    rightWeaponPWM = constrain(rightWeaponPWM, PWM_MIN, PWM_MAX);
 
     // Write PWM values to ESCs
     lDriveESC.writeMicroseconds(leftPWM);
     rDriveESC.writeMicroseconds(rightPWM);
-    wpnESC.writeMicroseconds(weaponPWM);
+    lWpnESC.writeMicroseconds(leftWeaponPWM);
+    rWpnESC.writeMicroseconds(rightWeaponPWM);
 
-    Serial.println("(OUTPUT) leftPWM: " + String(leftPWM) + ", rightPWM: " + String(rightPWM) + ", weaponPWM: " + String(weaponPWM));
+    Serial.println(
+        "(OUTPUT) leftPWM: " + String(leftPWM) + 
+        ", rightPWM: " + String(rightPWM) + 
+        ", leftWeaponPWM: " + String(leftWeaponPWM) + 
+        ",  rightWeaponPWM: " + String(rightWeaponPWM)
+        );
 }
 
 void attachMotorPins() {
     // Attach "servos"
     lDriveESC.attach(L_DRIVE_PIN, PWM_MIN, PWM_MAX);
     rDriveESC.attach(R_DRIVE_PIN, PWM_MIN, PWM_MAX);
-    wpnESC.attach(WPN_PIN, PWM_MIN, PWM_MAX);
+    lWpnESC.attach(R_WPN_PIN, PWM_MIN, PWM_MAX);
+    rWpnESC.attach(L_WPN_PIN, PWM_MIN, PWM_MAX);
 }
 
 void detachMotorPins() {
     // Detach "servos"
     lDriveESC.detach();
     rDriveESC.detach();
-    wpnESC.detach();
+    lWpnESC.detach();
+    rWpnESC.detach();
 
     // Set pins to input
     pinMode(L_DRIVE_PIN, INPUT);
     pinMode(R_DRIVE_PIN, INPUT);
-    pinMode(WPN_PIN, INPUT);
+    pinMode(R_WPN_PIN, INPUT);
+    pinMode(L_WPN_PIN, INPUT);
 }
 
 void setMode(int newMode) {
@@ -304,7 +331,9 @@ void setMode(int newMode) {
         // Stop all motors
         lDriveESC.writeMicroseconds(PWM_MID);
         rDriveESC.writeMicroseconds(PWM_MID);
-        wpnESC.writeMicroseconds(PWM_MID);
+        lWpnESC.writeMicroseconds(PWM_MID);
+        rWpnESC.writeMicroseconds(PWM_MID);
+
     } else if (mode == FLASHING_MODE) {
         Serial.println("Entered flashing mode");
         myCodeCell.LED(0, 255, 0);      // Green
