@@ -5,8 +5,8 @@
 // Define pins
 #define L_DRIVE_PIN 5
 #define R_DRIVE_PIN 6
-#define R_WPN_PIN 7
-#define L_WPN_PIN 9
+#define R_WPN_PIN 2
+#define L_WPN_PIN 3
 
 // Shorthand for the Xbox controller
 #define A xboxNotif.btnA
@@ -349,7 +349,8 @@ void setup() {
     Serial.println("Starting NimBLE Client");
     ctl.begin();
 
-    myCodeCell.Init(MOTION_GYRO + MOTION_ROTATION);
+    myCodeCell.Init(MOTION_GYRO + MOTION_ROTATION + LIGHT);
+    myCodeCell.LED_SetBrightness(10);
     myCodeCell.LED(255, 255, 255);
 
     setMode(PAIRING_MODE);
