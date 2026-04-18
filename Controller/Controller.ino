@@ -49,7 +49,7 @@
 #define STEER_OFF 0.0       // DON'T CHANGE
 #define STEER_MAX 100.0     // DON'T CHANGE
 #define INVERT_LEFT_WHEEL  1  // For inverting left wheel direction
-#define INVERT_RIGHT_WHEEL 0  // For inverting right wheel direction
+#define INVERT_RIGHT_WHEEL 1  // For inverting right wheel direction
 #define INVERT_LEFT_WPN    1  // For inverting left weapon direction
 #define INVERT_RIGHT_WPN   0  // For inverting right weapon direction
 
@@ -256,15 +256,15 @@ void applyPWM() {
 
     // left + right wpn inverting
     if (INVERT_LEFT_WPN){
-      int leftWeaponPWM = map(weaponSpeed, WPN_MIN, WPN_MAX, PWM_MIN, PWM_MAX);
+      leftWeaponPWM = map(weaponSpeed, WPN_MIN, WPN_MAX, PWM_MIN, PWM_MAX);
     } else {
-      int leftWeaponPWM = map(weaponSpeed, WPN_MIN, WPN_MAX, PWM_MAX, PWM_MIN);
+      leftWeaponPWM = map(weaponSpeed, WPN_MIN, WPN_MAX, PWM_MAX, PWM_MIN);
     }
 
     if (INVERT_RIGHT_WPN){
-      int rightWeaponPWM = map(weaponSpeed, WPN_MIN, WPN_MAX, PWM_MIN, PWM_MAX);
+      rightWeaponPWM = map(weaponSpeed, WPN_MIN, WPN_MAX, PWM_MIN, PWM_MAX);
     } else {
-      int rightWeaponPWM = map(weaponSpeed, WPN_MIN, WPN_MAX, PWM_MAX, PWM_MIN);
+      rightWeaponPWM = map(weaponSpeed, WPN_MIN, WPN_MAX, PWM_MAX, PWM_MIN);
     }
 
     // Constrain PWM values
@@ -291,8 +291,8 @@ void attachMotorPins() {
     // Attach "servos"
     lDriveESC.attach(L_DRIVE_PIN, PWM_MIN, PWM_MAX);
     rDriveESC.attach(R_DRIVE_PIN, PWM_MIN, PWM_MAX);
-    lWpnESC.attach(R_WPN_PIN, PWM_MIN, PWM_MAX);
-    rWpnESC.attach(L_WPN_PIN, PWM_MIN, PWM_MAX);
+    lWpnESC.attach(L_WPN_PIN, PWM_MIN, PWM_MAX);
+    rWpnESC.attach(R_WPN_PIN, PWM_MIN, PWM_MAX);
 }
 
 void detachMotorPins() {
@@ -349,7 +349,7 @@ void setup() {
     Serial.println("Starting NimBLE Client");
     ctl.begin();
 
-    myCodeCell.Init(MOTION_GYRO + MOTION_ROTATION + LIGHT);
+    myCodeCell.Init(LIGHT);
     myCodeCell.LED_SetBrightness(10);
     myCodeCell.LED(255, 255, 255);
 
@@ -374,7 +374,8 @@ void loop() {
                 elevonMixing();
                 applyPWM();
             } else if (mode == ASSISTED_COMBAT_MODE) {
-                assistedMixing();
+                elevonMixing();
+		//assistedMixing();
                 applyPWM();
             }
         }
